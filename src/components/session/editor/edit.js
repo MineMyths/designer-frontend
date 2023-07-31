@@ -1,4 +1,4 @@
-import { Delete } from "@mui/icons-material";
+import { Delete, SaveOutlined } from "@mui/icons-material";
 import {
 	Autocomplete,
 	Box,
@@ -42,20 +42,8 @@ export default function EditMenu(props) {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
 	function getMapped(type) {
-		let mappedType;
-		if (type.includes("ItemSubType")) {
-			mappedType = `me.omega.mythstom.rpg.item.type.ItemSubType-${
-				json["category"] === undefined
-					? "me.omega.mythstom.rpg.item.type.NoneType"
-					: `me.omega.mythstom.rpg.item.type.${toTitleCase(
-							json["category"].value
-					  )}Type`
-			}`;
-		} else {
-			mappedType = type;
-		}
-		if (mappings.hasOwnProperty(mappedType)) {
-			return mappings[mappedType].split("|");
+		if (mappings.hasOwnProperty(type)) {
+			return mappings[type].split("|");
 		}
 		return ["*"];
 	}
@@ -72,17 +60,39 @@ export default function EditMenu(props) {
 	}
 
 	function handleSave() {
+		for (const property in json) {
+			if (typeof json[property].type === "string") {
+				const mapped = getMapped(json[property].type);
+				if (mapped[0] !== "*") {
+					if (!mapped.includes(json[property].value)) {
+						alert(
+							`The value for ${property} is not a valid value. Valid values are: ${mapped.join(
+								", "
+							)}`
+						);
+						return;
+					}
+				}
+			}
+		}
+		console.log(
+			`/${secret}/data/push/${type}/${json.id.value}/${JSON.stringify(
+				json
+			)}/${newValue}`
+		);
 		api.post(
 			`/${secret}/data/push/${type}/${json.id.value}/${JSON.stringify(
 				json
 			)}/${newValue}`
 		)
 			.then((response) => {
+				console.log(response);
 				if (response.status === 200) {
 					navigate(`/session/${sessionId}/${type}`);
 				}
 			})
 			.catch((error) => {
+				console.log(error);
 				if (error.response.status === 409) {
 					alert("A data value already exists with that ID!");
 				} else {
@@ -92,51 +102,29 @@ export default function EditMenu(props) {
 			});
 	}
 
-	function handleChange(event, path, newValue) {
+	function handleChange(event, path, newValue, setExtras = true) {
 		console.log(path);
-		setJson((prevJson) => {
-			_.set(prevJson, path, {
-				value: newValue !== undefined ? newValue : event.target.value,
-				type: properties[path],
-				name: path,
+		if (setExtras) {
+			setJson((prevJson) => {
+				_.set(prevJson, path, {
+					value:
+						newValue !== undefined ? newValue : event.target.value,
+					type: properties[path],
+					name: path,
+				});
+				return { ...prevJson };
 			});
-			return { ...prevJson };
-		});
+		} else {
+			setJson((prevJson) => {
+				_.set(
+					prevJson,
+					path,
+					newValue !== undefined ? newValue : event.target.value
+				);
+				return { ...prevJson };
+			});
+		}
 		console.log(json);
-	}
-
-	function renderSelect(name, path, mapped, jsonProperty) {
-		const titleCaseName = toTitleCase(name);
-		return (
-			<FormControl
-				required={true}
-				component="fieldset"
-				sx={{
-					width: "100%",
-				}}
-			>
-				<InputLabel id={`${name}-label`}>{titleCaseName}</InputLabel>
-				<Select
-					labelId={`${name}-label`}
-					id={name}
-					label={titleCaseName}
-					value={
-						jsonProperty !== undefined
-							? name.includes(" - ")
-								? jsonProperty[name.split(" - ")[1]]
-								: jsonProperty.value
-							: ""
-					}
-					onChange={(event) => {
-						handleChange(event, path);
-					}}
-				>
-					{mapped.map((item) => (
-						<MenuItem value={item}>{item}</MenuItem>
-					))}
-				</Select>
-			</FormControl>
-		);
 	}
 
 	function handleAddMapPair(property, key, defaultValue, keyType, valueType) {
@@ -157,7 +145,7 @@ export default function EditMenu(props) {
 				if (prevJson[property].value.hasOwnProperty(key)) {
 					return { ...prevJson };
 				}
-				prevJson[property].value[key] = defaultValue;
+				prevJson[property].value[key] = (defaultValue.length > 1 ? JSON.parse(defaultValue) : defaultValue);
 			}
 			return { ...prevJson };
 		});
@@ -197,7 +185,7 @@ export default function EditMenu(props) {
 							gap: 2,
 						}}
 					>
-						{Object.keys(mapProperty).map((value, index) => {
+						{Object.keys(mapProperty).map((value) => {
 							tempPath = `${path}.value.${value}`;
 							return (
 								<Box
@@ -245,28 +233,31 @@ export default function EditMenu(props) {
 								width: "100%",
 							}}
 						>
-							<InputLabel id={`${name}-add-map-pair`}>
-								Add Map Pair - Select Key
-							</InputLabel>
-							<Select
-								labelId={`${name}-add-map-pair`}
+							<Autocomplete
+								disablePortal
 								id={name}
-								label={"Add Map Pair - Select Key"}
 								value={""}
-								onChange={(event) => {
+								options={keyMapped}
+								onChange={(event, newValue) => {
 									handleAddMapPair(
 										name,
-										event.target.value,
+										newValue,
 										valueMapped[0],
 										keyType,
 										valueType
 									);
 								}}
-							>
-								{keyMapped.map((item) => (
-									<MenuItem value={item}>{item}</MenuItem>
-								))}
-							</Select>
+								getOptionLabel={(option) => {
+									return option.toString();
+								}}
+								renderInput={(params) => (
+									<TextField
+										{...params}
+										label={"Add Map Pair - Select Key"}
+										required={false}
+									/>
+								)}
+							/>
 						</FormControl>
 					</Box>
 				</Accordian>
@@ -274,16 +265,8 @@ export default function EditMenu(props) {
 		);
 	}
 
-	function renderList(name, jsonProperty) {}
-
 	function renderAutoComplete(name, path, mapped, jsonProperty) {
 		const titleCaseName = toTitleCase(name);
-		const materialsMapped = mapped.map((item) => {
-			return {
-				label: item,
-				value: item,
-			};
-		});
 		return (
 			<FormControl
 				required={true}
@@ -309,7 +292,6 @@ export default function EditMenu(props) {
 						handleChange(event, path, newValue);
 					}}
 					getOptionLabel={(option) => {
-						// console.log(`Option: ${option}`)
 						return option.toString();
 					}}
 					renderInput={(params) => (
@@ -319,12 +301,191 @@ export default function EditMenu(props) {
 							required={true}
 						/>
 					)}
-				>
-					{/* {mapped.map((item) => (
-						<MenuItem value={item}>{item}</MenuItem>
-					))} */}
-				</Autocomplete>
+				/>
 			</FormControl>
+		);
+	}
+
+	function RenderAttributeValue(props) {
+		const { name, path, jsonProperty } = props;
+
+		const [dialogOpen, setDialogOpen] = useState(false);
+
+		const [min, setMin] = useState(
+			jsonProperty !== undefined
+				? name.includes(" - ")
+					? jsonProperty.value[name.split(" - ")[1]].range.minimum
+					: jsonProperty.range.minimum
+				: ""
+		);
+		const [max, setMax] = useState(
+			jsonProperty !== undefined
+				? name.includes(" - ")
+					? jsonProperty.value[name.split(" - ")[1]].range.maximum
+					: jsonProperty.range.maximum
+				: ""
+		);
+		const [type, setType] = useState(
+			jsonProperty !== undefined
+				? name.includes(" - ")
+					? jsonProperty.value[name.split(" - ")[1]].type
+					: jsonProperty.type
+				: ""
+		);
+
+		console.log(name);
+		console.log(jsonProperty);
+		console.log(type)
+
+		return (
+			<Box
+				sx={{
+					width: "50%",
+				}}
+			>
+				<Button
+					variant="outlined"
+					color="white"
+					sx={{
+						width: "100%",
+					}}
+					onClick={() => {
+						setDialogOpen(true);
+					}}
+				>
+					Edit Value
+				</Button>
+				<Dialog
+					open={dialogOpen}
+					onClose={() => {
+						setDialogOpen(false);
+					}}
+				>
+					<DialogTitle d="delete-dialog-title">
+						Attribute Value - {name}
+					</DialogTitle>
+					<DialogContent>
+						<DialogContentText id="delete-dialog-content">
+							Choose the minimum, maximum, and type for this
+							value. Numbers can go negative. If you wish for the
+							value to never change, set the minimum and maximum
+							to the same value.
+						</DialogContentText>
+					</DialogContent>
+					<DialogActions
+						sx={{
+							display: "flex",
+							flexDirection: "column",
+							gap: 1,
+						}}
+					>
+						<Box
+							sx={{
+								width: "100%",
+								display: "flex",
+								flexDirection: "row",
+								gap: 1,
+							}}
+						>
+							<TextField
+								required={true}
+								id={name}
+								label={"Range Minimum"}
+								type={"number"}
+								defaultValue={min}
+								onChange={(event) => {
+									setMin(event.target.value);
+									// handleChange(
+									// 	event,
+									// 	`${path}.range.minimum`,
+									// 	undefined,
+									// 	false
+									// );
+								}}
+								sx={{
+									width: "100%",
+								}}
+							/>
+							<TextField
+								required={true}
+								id={name}
+								label={"Range Maximum"}
+								type={"number"}
+								defaultValue={max}
+								onChange={(event) => {
+									setMax(event.target.value);
+									// handleChange(
+									// 	event,
+									// 	`${path}.range.maximum`,
+									// 	undefined,
+									// 	false
+									// );
+								}}
+								sx={{
+									width: "100%",
+								}}
+							/>
+							<Autocomplete
+								disablePortal
+								id={`${name}-type`}
+								value={type}
+								options={["FLAT", "PERCENTAGE"]}
+								onChange={(event, newValue) => {
+									setType(newValue);
+									// handleChange(
+									// 	event,
+									// 	`${path}.type`,
+									// 	newValue,
+									// 	false
+									// );
+								}}
+								getOptionLabel={(option) => {
+									console.log(option)
+									return option;
+								}}
+								renderInput={(params) => (
+									<TextField
+										{...params}
+										label={"Attribute Value Type"}
+										required={true}
+									/>
+								)}
+								sx={{
+									width: "100%",
+								}}
+							/>
+						</Box>
+						<Button
+							fullWidth
+							size="large"
+							variant="outlined"
+							onClick={() => {
+								setDialogOpen(false);
+								handleChange(
+									undefined,
+									`${path}.range.minimum`,
+									min,
+									false
+								);
+								handleChange(
+									undefined,
+									`${path}.range.maximum`,
+									max,
+									false
+								);
+								handleChange(
+									undefined,
+									`${path}.type`,
+									type,
+									false
+								);
+							}}
+						>
+							Save
+						</Button>
+					</DialogActions>
+				</Dialog>
+			</Box>
 		);
 	}
 
@@ -332,15 +493,24 @@ export default function EditMenu(props) {
 		const titleCaseName = toTitleCase(name);
 		const mapped = getMapped(type);
 		switch (type) {
-			case "kotlin.String":
 			case "me.omega.mythstom.rpg.attribute.component.AttributeValue":
+				return (
+					<RenderAttributeValue
+						name={name}
+						titleCaseName={titleCaseName}
+						mapped={mapped}
+						path={path}
+						jsonProperty={jsonProperty}
+					/>
+				);
+			case "kotlin.String":
 			case "kotlin.Int":
 				return (
 					<TextField
 						required={true}
 						id={name}
 						label={titleCaseName}
-						multiline={type === "String"}
+						multiline={type === "kotlin.String"}
 						type={type !== "kotlin.String" ? "number" : "text"}
 						defaultValue={
 							jsonProperty !== undefined
@@ -356,7 +526,7 @@ export default function EditMenu(props) {
 					/>
 				);
 			case "kotlin.Boolean":
-				return renderSelect(
+				return renderAutoComplete(
 					name,
 					path,
 					["true", "false"],
@@ -369,7 +539,7 @@ export default function EditMenu(props) {
 			case "net.minestom.server.item.Material":
 				return renderAutoComplete(name, path, mapped, jsonProperty);
 			default:
-				return renderSelect(name, path, mapped, jsonProperty);
+				return renderAutoComplete(name, path, mapped, jsonProperty);
 		}
 	}
 
